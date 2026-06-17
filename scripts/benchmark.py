@@ -7,13 +7,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))   # repo root importable
 
 from benchmarks.harness import run_benchmark
 from benchmarks.prompts import MAX_NEW_TOKENS, N_RUNS, PROMPT
-from engine.generator import naive_generate
+from engine.generator import naive_generate, cached_generate
 from engine.loader import load_model
 
 
 def main():
     model, tokenizer = load_model()
-    run_benchmark(model, tokenizer, naive_generate,
+    run_benchmark(model, tokenizer, cached_generate,
                   PROMPT, MAX_NEW_TOKENS, N_RUNS, stage_name="stage0_baseline")
 
 
