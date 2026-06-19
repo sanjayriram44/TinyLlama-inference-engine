@@ -1,0 +1,11 @@
+{
+  "stage": "stage2_kvcache",
+  "prompt_tokens": 36,
+  "new_tokens": 128,
+  "ttft_s": 0.0154,
+  "tpot_ms": 13.06,
+  "tokens_per_s": 76.47,
+  "total_s": 1.674,
+  "peak_mem_gb": 2.215,
+  "output_matches_golden": true
+}

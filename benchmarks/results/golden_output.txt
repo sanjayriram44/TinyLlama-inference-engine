@@ -1,0 +1,9 @@
+Explain, step by step, how a transformer language model generates text one token at a time, and why caching past computations makes this process faster and more efficient. 
+<|assistant|>
+A transformer language model is a type of neural network architecture that is designed to generate text by processing a sequence of tokens one token at a time. The model consists of multiple layers of transformer blocks, each of which is responsible for processing a specific sequence of tokens.
+
+The process of generating text using a transformer language model involves the following steps:
+
+1. Tokenization: The model is first trained on a large corpus of text, which is tokenized into individual words.
+
+2. Encoder-Decoder Architecture: The model consists of two main components

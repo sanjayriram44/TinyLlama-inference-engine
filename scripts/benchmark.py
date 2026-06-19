@@ -14,7 +14,7 @@ from engine.loader import load_model
 def main():
     model, tokenizer = load_model()
     run_benchmark(model, tokenizer, cached_generate,
-                  PROMPT, MAX_NEW_TOKENS, N_RUNS, stage_name="stage0_baseline")
+                  PROMPT, MAX_NEW_TOKENS, N_RUNS, stage_name="stage2_kvcache")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+{
+  "stage": "stage0_baseline",
+  "prompt_tokens": 36,
+  "new_tokens": 128,
+  "ttft_s": 0.0166,
+  "tpot_ms": 15.97,
+  "tokens_per_s": 62.61,
+  "total_s": 2.044,
+  "peak_mem_gb": 2.232,
+  "output_matches_golden": true
+}
