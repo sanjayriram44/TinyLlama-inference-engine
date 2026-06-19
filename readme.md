@@ -46,3 +46,38 @@ widens sharply. Finding that crossover is the natural next experiment.
 **Takeaway:** the KV cache is correct and lossless here (the point of a lossless
 optimization stage), and its limited speedup is itself the lesson — you can't
 optimize away a cost that isn't your bottleneck.
+
+## Stage 3 — Batching findings
+
+Static batching with KV cache: many prompts (varied lengths, left-padded) run
+through one decode loop together. Metric shifts from per-token latency to
+**aggregate throughput** (total tokens across the batch / wall time).
+
+### Throughput sweep (A40, 128 tokens/seq, 3 runs)
+
+| Batch | Throughput (tok/s) | Per-seq (tok/s) | Wall time (s) | Peak mem (GB) |
+|-------|--------------------|-----------------|---------------|---------------|
+| 1 | 60.1 | 60.1 | 2.13 | 2.21 |
+| 2 | 132.8 | 66.4 | 1.93 | 2.22 |
+| 4 | 267.9 | 67.0 | 1.91 | 2.23 |
+| 8 | 532.7 | 66.6 | 1.92 | 2.25 |
+| 16 | 1057.2 | 66.1 | 1.94 | 2.29 |
+| 32 | 2134.1 | 66.7 | 1.92 | 2.37 |
+
+### The finding: batching is nearly free here, and the compute wall is far away
+
+Throughput scaled **~35× across a 32× batch increase** — almost perfectly
+linear. The proof is the wall-time column: batch 32 did **32× the work in the
+same ~1.9s** as batch 1. This is the whole thesis of batching, confirmed:
+because decode streams the 2.2 GB of weights once per step regardless of batch
+size, stacking sequences fills otherwise-idle compute for free. Per-sequence
+speed held flat (~66 tok/s) — no user paid a latency penalty.
+
+**The predicted throughput "bend" (compute saturation) did not appear** — and
+that's the real result. Evidence the GPU was never saturated: `nvidia-smi`
+showed util at only 51–70% even at batch 32, and peak memory used just 2.37 GB
+of the A40's 46 GB. A 1.1B model on a 46 GB card has enormous headroom; the
+memory-bound → compute-bound transition lies far beyond batch 32. **Follow-up:**
+rerun with batch sizes 64–512 to find the bend (where throughput stops scaling
+linearly and per-seq tok/s starts dropping) — that crossover is the experiment's
+true conclusion.
