@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Model weights / HF cache (never commit — multi-GB, fetched on demand)
+hf_cache/
+*.safetensors
+*.bin
+*.pt
+
+# OS
+.DS_Store
