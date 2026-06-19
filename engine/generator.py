@@ -87,3 +87,69 @@ def cached_generate(model, input_ids: torch.Tensor, max_new_tokens: int):
         token_times.append(time.perf_counter() - start)
 
     return ids, token_times
+
+@torch.inference_mode()
+def batched_generate(model, tokenizer, prompts: list[str], max_new_tokens: int):
+    """Static batching with KV cache: generate for many prompts at once.
+
+    Pads the batch to a rectangle, builds the attention mask so padding is
+    ignored, and runs ONE KV-cache decode loop over all sequences together.
+    The whole point: decode streams the 2.2GB of weights once per step
+    regardless of batch size, so B sequences cost ~the same as 1 -> throughput.
+
+    Static = the batch runs until ALL sequences hit max_new_tokens (no early
+    eviction / refill -- that's continuous batching, the next step).
+
+    Returns:
+        sequences:   list[str], decoded text per prompt (padding stripped)
+        token_times: list of cumulative seconds-since-start, one per decode step
+    """
+    # ---- LEFT-pad the batch ----
+    # Left-padding (not right) is the key trick for batched generation: it puts
+    # every prompt's LAST real token at the same final column. The decode loop
+    # always reads logits[:, -1, :], so all sequences' "next token" lines up in
+    # one clean slice -- no per-row bookkeeping for where each prompt ends.
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token   # Llama has no pad token by default
+
+    enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+    ids = enc.input_ids                 # (B, T_pad)
+    attn = enc.attention_mask           # (B, T_pad): 1 = real token, 0 = padding
+
+    B = ids.shape[0]
+    token_times = []
+
+    torch.cuda.synchronize()
+    start = time.perf_counter()
+
+    # ---- PREFILL: whole padded batch once, cache on ----
+    out = model(ids, attention_mask=attn, use_cache=True)
+    past = out.past_key_values
+    next_ids = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)   # (B, 1)
+    generated = [next_ids]                                          # collect per step
+
+    torch.cuda.synchronize()
+    token_times.append(time.perf_counter() - start)
+
+    # ---- DECODE: feed one new token PER SEQUENCE + the cache ----
+    for _ in range(max_new_tokens - 1):
+        # The mask must keep growing: every new token is real (a 1), appended
+        # to the right. Forgetting to extend the mask is THE classic batched-
+        # generation bug -- attention silently sees the wrong shape/positions.
+        attn = torch.cat([attn, torch.ones((B, 1), device=model.device, dtype=attn.dtype)], dim=1)
+
+        out = model(next_ids, attention_mask=attn, past_key_values=past, use_cache=True)
+        past = out.past_key_values
+        next_ids = out.logits[:, -1, :].argmax(dim=-1, keepdim=True)   # (B, 1)
+        generated.append(next_ids)
+
+        torch.cuda.synchronize()
+        token_times.append(time.perf_counter() - start)
+
+    # ---- assemble per-sequence outputs ----
+    gen = torch.cat(generated, dim=1)                  # (B, max_new_tokens)
+    full = torch.cat([ids, gen], dim=1)                # prompt + generated
+    sequences = tokenizer.batch_decode(full, skip_special_tokens=True)
+
+    return sequences, token_times
