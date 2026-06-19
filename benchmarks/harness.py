@@ -65,6 +65,44 @@ def run_benchmark(model, tokenizer, generate_fn, prompt: str,
     (RESULTS_DIR / f"{stage_name}.json").write_text(json.dumps(metrics, indent=2))
     print(json.dumps(metrics, indent=2))
     return metrics
+    
+def run_batch_benchmark(model, tokenizer, generate_fn, prompts: list[str],
+                        max_new_tokens: int, n_runs: int, stage_name: str) -> dict:
+    """Batched benchmark. Headline metric is AGGREGATE THROUGHPUT
+    (total tokens across the whole batch / wall time), not per-token latency.
+
+    The whole thesis of batching lives in this number: because decode streams
+    the weights once per step regardless of batch size, total throughput should
+    climb with B for nearly free -- until compute finally saturates.
+    """
+    RESULTS_DIR.mkdir(exist_ok=True)
+    B = len(prompts)
+
+    # warmup (discarded): absorbs one-time CUDA init / autotune
+    generate_fn(model, tokenizer, prompts, 8)
+
+    torch.cuda.reset_peak_memory_stats()
+    totals = []
+    for _ in range(n_runs):
+        _, token_times = generate_fn(model, tokenizer, prompts, max_new_tokens)
+        totals.append(token_times[-1])          # last cumulative time = wall time
+
+    total = statistics.mean(totals)
+    total_tokens = B * max_new_tokens           # every sequence emits max_new_tokens
+
+    metrics = {
+        "stage": stage_name,
+        "batch_size": B,
+        "new_tokens_per_seq": max_new_tokens,
+        "total_tokens": total_tokens,
+        "total_s": round(total, 3),
+        "throughput_tok_s": round(total_tokens / total, 2),   # ← the headline
+        "per_seq_tok_s": round(total_tokens / total / B, 2),  # throughput / B
+        "peak_mem_gb": round(torch.cuda.max_memory_allocated() / 1e9, 3),
+    }
+    (RESULTS_DIR / f"{stage_name}_b{B}.json").write_text(json.dumps(metrics, indent=2))
+    print(json.dumps(metrics, indent=2))
+    return metrics
 
 
 def _check_golden(output_text: str):
