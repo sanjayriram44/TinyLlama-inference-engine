@@ -7,3 +7,6 @@ def perplexity(model, tokenizer, text: str) -> float:
     ids = tokenizer(text, return_tensors="pt").input_ids.to(model.device)
     out = model(ids, labels=ids)          # HF computes mean cross-entropy loss
     return torch.exp(out.loss).item()      # perplexity = exp(loss)
+
+
+#plssdss
